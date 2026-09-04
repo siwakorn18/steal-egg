@@ -55,7 +55,7 @@ F.trapR   = F.trapR   or 9                                   -- ใกล้ก�
 F.trapLift = F.trapLift or 12                                -- ความสูงที่บินข้ามกับดัก
 F.home    = F.home                                           -- คอกบ้าน (หาเอง/SETHOME)
 -- ★ URL ไอคอน (raw GitHub) — ให้เครื่องอื่นโหลดรูปเองถ้าไม่มีไฟล์ในเครื่อง | แก้ USER/REPO เป็นของคุณ
-F.iconUrl = F.iconUrl or "https://raw.githubusercontent.com/USER/REPO/main/steal-icon.png"
+F.iconUrl = F.iconUrl or "https://raw.githubusercontent.com/siwakorn18/steal-egg/main/steal-icon.png"
 F.skip    = F.skip    or {}
 F.status  = "พร้อม"
 F.gen     = (F.gen or 0) + 1
