@@ -15,11 +15,21 @@ local Workspace   = game:GetService("Workspace")
 local lp          = Players.LocalPlayer
 local function safe(fn) local ok, r = pcall(fn); if ok then return r end end
 
-local Remotes       = safe(function() return require(RS.Shared.Remotes) end)
-local EggState      = safe(function() return require(RS.Client.EggState) end)
-local AssetEarnings = safe(function() return require(RS.Shared.Util.AssetEarnings) end)
-local EggRecords    = safe(function() return require(RS.Shared.Util.EggRecords) end)
-if not Remotes or not EggState then warn("[farm] โหลด module เกมไม่ได้ — เข้าเกมให้ครบก่อน"); return end
+-- ★ รอเกมโหลดครบก่อน (กันรันเร็วไปตอนเพิ่งเข้าเกม -> module ยังไม่มา -> require คืน nil)
+if not game:IsLoaded() then pcall(function() game.Loaded:Wait() end) end
+pcall(function() if not lp.Character then lp.CharacterAdded:Wait() end end)
+local Remotes, EggState, AssetEarnings, EggRecords
+do
+    local t0 = tick()
+    repeat
+        Remotes       = safe(function() return require(RS.Shared.Remotes) end)
+        EggState      = safe(function() return require(RS.Client.EggState) end)
+        AssetEarnings = safe(function() return require(RS.Shared.Util.AssetEarnings) end)
+        EggRecords    = safe(function() return require(RS.Shared.Util.EggRecords) end)
+        if not (Remotes and EggState) then task.wait(1) end
+    until (Remotes and EggState) or tick() - t0 > 45   -- retry ได้ถึง 45 วิ
+end
+if not Remotes or not EggState then warn("[farm] โหลด module เกมไม่ได้ — เข้าเกมให้ครบก่อนแล้วรันใหม่"); return end
 -- module ตามชื่อ (สำหรับอัพเกรดบ้าน)
 local function reqByName(n)
     local m = RS:FindFirstChild(n, true)
