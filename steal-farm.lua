@@ -620,10 +620,31 @@ local function idleTreadmill(reason)
             end
         end
     end
-    -- ★ ลงจากลู่: AskDoff (ให้ server ปลดเอง) + ถอด Humanoid บิน
+    -- ★ ลงจากลู่ให้ครบ (กันลู่/Tool ติดตัวลอยไปด้วย = "ยังไม่ลงจากลู่")
     F.status = "ลงจากลู่..."
     pcall(function() Remotes.Treadmill.AskDoff:InvokeServer() end)
-    task.wait(0.3)
+    task.wait(0.25)
+    local char = lp.Character
+    if char then
+        -- ถอด Tool ที่ชื่อเกี่ยวลู่ (TreadmillRender_*) ออกจากตัว
+        for _, t in ipairs(char:GetChildren()) do
+            if t:IsA("Tool") and t.Name:lower():find("treadmill") then
+                pcall(function() t.Parent = lp:FindFirstChild("Backpack") end)
+            end
+        end
+        -- ลบ weld/joint ที่ยึด root กับของ "นอกตัวเรา" (ลู่)
+        local root = hrp()
+        if root then
+            for _, w in ipairs(root:GetJoints()) do
+                if w:IsA("Weld") or w:IsA("WeldConstraint") or w:IsA("Motor6D") then
+                    local other = (w.Part0 == root) and w.Part1 or w.Part0
+                    if other and not other:IsDescendantOf(char) then pcall(function() w:Destroy() end) end
+                end
+            end
+        end
+    end
+    pcall(function() Remotes.Treadmill.AskDoff:InvokeServer() end)   -- ย้ำอีกที
+    task.wait(0.15)
     removeHumanoid()
     F.onTreadmill = false
     F.status = "ลงจากลู่ ไปเก็บไข่"
@@ -879,7 +900,7 @@ task.spawn(function()
     end
 end)
 
-print("[farm] 🔖 เวอร์ชัน 2026-09-05g (ลู่วิ่ง: ถอด Humanoid + ค้าง+ยิงซ้ำ)")
+print("[farm] 🔖 เวอร์ชัน 2026-09-05h (ลู่วิ่ง: ถอด Humanoid + ลงลู่ครบ ปลด Tool/weld)")
 print("[farm] ✅ เริ่มทำงานอัตโนมัติ — ไอคอนกลางจอ = กำลังทำงาน (ไม่มีปุ่มติ๊กแล้ว)")
 print("[farm] ปรับ: getgenv().__farm.speed/.minRate | SETHOME()/SETSAFE() | หยุด: FARM(false)")
 
