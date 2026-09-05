@@ -527,37 +527,76 @@ end
 local function findTreadmill()
     return F.plot and F.plot:FindFirstChild("TreadmillBottom", true)
 end
+-- ★ auto-mount (พบ 2026-09-05): ต้อง "ขึ้นลู่" ด้วย AskWearStill ให้ server รับรู้ก่อน แค่ยืนเฉยๆ Speed ไม่ขึ้น
+--   จุดที่ผ่าน = TreadmillBottom + offset (ปลายเบลท์ ~-Z สูง +1) → AskWearStill คืน true → Speed ขึ้นเรื่อยๆ
+local TREAD_OFFSETS = {
+    Vector3.new(0, 1, -5), Vector3.new(0, 1, 5), Vector3.new(0, 1, -3), Vector3.new(0, 1, 3),
+    Vector3.new(0, 1, 0), Vector3.new(3, 1, -5), Vector3.new(-3, 1, -5), Vector3.new(0, 3, -5),
+}
+local function tryMount(spot)
+    local r = hrp(); if not r then return false end
+    r.CFrame = CFrame.new(spot); r.AssemblyLinearVelocity = Vector3.zero
+    RunService.Heartbeat:Wait(); RunService.Heartbeat:Wait()
+    local ok, r1, r2 = pcall(function() return Remotes.Treadmill.AskWearStill:InvokeServer() end)
+    if not ok then return false end
+    if r1 == true then return true end                          -- ขึ้นสำเร็จ (จุดถูก)
+    if r2 and tostring(r2):find("Already") then return true end -- ขึ้นอยู่แล้ว = ก็คือสำเร็จ (Speed ขึ้นอยู่)
+    return false                                                -- "Not at treadmill" = จุดผิด ลองต่อ
+end
 local function idleTreadmill(reason)
-    -- จุดยืนลู่: ใช้ที่ตั้งด้วย SETTREADMILL ก่อน, ไม่มีก็หา TreadmillBottom ของ plot เรา
-    local spot = F.treadmill
-    if not spot then
-        local tb = findTreadmill()
-        if tb then spot = tb.Position + Vector3.new(0, tb.Size.Y / 2 + 3, 0) end
-    end
-    if not spot then F.status = "ไม่เจอลู่วิ่ง — hover รอ"; task.wait(3); return end
-    flyVia(spot, 4, "→ ลู่วิ่ง")
+    local tb = findTreadmill()
+    if not tb then F.status = "ไม่เจอลู่วิ่ง — hover รอ"; task.wait(3); return end
+    flyVia(tb.Position + Vector3.new(0, 4, 0), 6, "→ ลู่วิ่ง")
     F.onTreadmill = true
     restoreHumanoid()
-    local r = hrp()
-    if r then r.AssemblyLinearVelocity = Vector3.zero; r.CFrame = CFrame.new(spot) end
+    pcall(function() Remotes.Treadmill.AskDoff:InvokeServer() end)  -- รีเซ็ต mount ค้างก่อน (จะได้ขึ้นจุดถูกชัวร์)
+    task.wait(0.2)
+    -- หาจุดขึ้นที่ AskWearStill ผ่าน (ลอง offset ที่เคยได้ก่อน แล้วค่อยไล่ที่เหลือ)
+    local base = tb.Position
+    local spot
+    local list = {}
+    if F.treadOffset then list[1] = F.treadOffset end
+    for _, o in ipairs(TREAD_OFFSETS) do list[#list + 1] = o end
+    for _, o in ipairs(list) do
+        if not (F.on and F.gen == myGen) then break end
+        if tryMount(base + o) then spot = base + o; F.treadOffset = o; break end
+    end
+    if not spot then
+        -- ขึ้นลู่ไม่ได้ = ไม่ค้าง แค่รอเฉยๆ (ยังฟัก/ขาย/อัพผ่าน maintain) แล้ววนกลับไปเช็คไข่
+        F.status = "⚠ ขึ้นลู่ไม่ได้ (AskWearStill ไม่ผ่าน) — รอเฉย"
+        print("[farm] " .. F.status)
+        F.onTreadmill = false; removeHumanoid()
+        local t = tick()
+        while F.on and F.gen == myGen and tick() - t < 8 do
+            pcall(maintain); local rec = pickEgg(); if rec and not F.penFull then break end; task.wait(2)
+        end
+        return
+    end
     F.status = "🏃 วิ่งบนลู่ (" .. tostring(reason) .. ")"
-    print("[farm] " .. F.status)
+    print(("[farm] %s @ offset (%.0f,%.0f,%.0f)"):format(F.status, F.treadOffset.X, F.treadOffset.Y, F.treadOffset.Z))
     local ls = lp:FindFirstChild("leaderstats")
     local function speedNow() return ls and ls:FindFirstChild("Speed") and ls.Speed.Value end
-    local sp0, t0 = speedNow(), tick()
+    local sp0, t0, lastMount, lastTick = speedNow(), tick(), tick(), 0
     while F.on and F.gen == myGen do
-        pcall(maintain)                         -- ฟัก/equip/ขาย/อัพ ระหว่างรอ
-        local rec = pickEgg()
-        if rec and not F.penFull then break end -- ★ ลงจากลู่: มีไข่ให้เก็บ + คอกมีที่
-        local rr = hrp(); if rr and (rr.Position - spot).Magnitude > 4 then rr.CFrame = CFrame.new(spot) end  -- ยืนจุดเดิม
-        if tick() - t0 > 15 then
-            t0 = tick()
-            local sp = speedNow()
-            if sp0 and sp then print(("[farm] 🏃 Speed %s -> %s (%s)"):format(compact(sp0), compact(sp), sp > sp0 and "▲เพิ่ม!" or "นิ่ง?")); sp0 = sp end
+        -- ยืนจุดเดิมทุกเฟรม (กัน Humanoid ไหล/ตก) — Speed ขึ้นเองจากการ mount ไว้
+        local rr = hrp()
+        if rr then rr.CFrame = CFrame.new(spot); rr.AssemblyLinearVelocity = Vector3.zero end
+        RunService.Heartbeat:Wait()
+        if tick() - lastTick >= 2 then
+            lastTick = tick()
+            pcall(maintain)                          -- ฟัก/equip/ขาย/อัพ ระหว่างรอ
+            local rec = pickEgg()
+            if rec and not F.penFull then break end  -- ★ ลงจากลู่: มีไข่ให้เก็บ + คอกมีที่
+            if tick() - lastMount > 10 then          -- re-mount กันหลุด (server อาจ dismount ถ้าขยับ)
+                lastMount = tick(); pcall(function() Remotes.Treadmill.AskWearStill:InvokeServer() end)
+            end
+            if tick() - t0 > 15 then
+                t0 = tick(); local sp = speedNow()
+                if sp0 and sp then print(("[farm] 🏃 Speed %s -> %s (%s)"):format(compact(sp0), compact(sp), sp > sp0 and "▲เพิ่ม!" or "นิ่ง?")); sp0 = sp end
+            end
         end
-        task.wait(2)
     end
-    -- ★ ลงจากลู่แบบเรียบง่าย: AskDoff (ให้ server ปลดเอง) + ถอด Humanoid บิน (ไม่ไปลบ weld/tool เอง)
+    -- ★ ลงจากลู่: AskDoff (ให้ server ปลดเอง) + ถอด Humanoid บิน
     F.status = "ลงจากลู่..."
     pcall(function() Remotes.Treadmill.AskDoff:InvokeServer() end)
     task.wait(0.3)
