@@ -54,6 +54,7 @@ F.speedLow  = F.speedLow  or 700
 F.speedHigh = F.speedHigh or 800
 F.speedStatThresh = F.speedStatThresh or 1e6
 F.dayDelay = F.dayDelay or 3                                 -- ★ รอต้นวันกี่วิ (countdown ไข่พร้อม) ก่อนเริ่มวิ่งเก็บ
+F.maxDist = F.maxDist or 3500                                -- ★ ข้ามไข่ไกลเกินนี้ (บินนานเกิน -> ไข่ย้าย/รีเซ็ตก่อนถึง = เสียเที่ยว)
 F.minRate = F.minRate or 10e6                                -- ใช้ตอน dynamic=false
 F.dynamic  = (F.dynamic ~= false)                            -- true=สลับเฟสตาม Money/s อัตโนมัติ
 F.growUntil = F.growUntil or 10e6                            -- Money/s < นี้ = เก็บทุกใบไกลสุดก่อน (ปั้น)
@@ -288,6 +289,15 @@ local function eggRate(rec)
     local r = safe(function() return AssetEarnings.RatePerSecond(item) end)
     return type(r) == "number" and r or 0
 end
+-- ตำแหน่งไข่ "ล่าสุด" ตาม uid (ไข่ย้ายที่ตอน day/night reset) — คืน nil ถ้าไข่หายแล้ว
+local function liveEggPos(uid)
+    for _, rec in pairs(fieldEggs()) do
+        if type(rec) == "table" and rec.Uid == uid and tostring(rec.State or "") == "Slot" then
+            return eggPos(rec)
+        end
+    end
+    return nil
+end
 -- เลือกไข่: วัดระยะจากเซฟโซน (คงที่), กรอง minRate, far/near, ข้าม skip
 local function pickEgg()
     local ref = F.safe or (hrp() and hrp().Position); if not ref then return end
@@ -309,6 +319,8 @@ local function pickEgg()
                 local rate = eggRate(rec)
                 if rate >= minRate then
                     local p = eggPos(rec)
+                    -- ★ ข้ามไข่ไกลเกิน maxDist (บินนาน -> ไข่ย้ายก่อนถึง = "บินไปแล้วกลับ")
+                    if p and F.maxDist and (flat(ref) - flat(p)).Magnitude > F.maxDist then p = nil end
                     if p then
                         local score
                         if mode == "value" then score = rate                         -- มาก = ดี
@@ -713,7 +725,26 @@ local function loop()
             local approach = dir.Magnitude > 0.1 and (pos + dir.Unit * 3) or pos
             approach = Vector3.new(approach.X, pos.Y + 3, approach.Z)
 
-            if flyVia(approach, 4, "→ ไข่") and grabEgg(rec, pos) then
+            local startDist = hrp() and (flat(hrp().Position) - flat(pos)).Magnitude or -1
+            local reached = flyVia(approach, 4, "→ ไข่")
+            -- ★ ไข่อาจย้ายที่ (day/night reset) ระหว่างบิน — เช็คตำแหน่งล่าสุด: ย้ายไกล=บินตาม, หาย=ข้าม
+            if reached then
+                local live = liveEggPos(rec.Uid)
+                if not live then
+                    reached = false   -- ไข่หายแล้ว (โดนเก็บ/รีเซ็ต) — ข้าม
+                elseif (flat(live) - flat(pos)).Magnitude > 25 then
+                    pos = live
+                    local ap2 = Vector3.new(live.X, live.Y + 3, live.Z)
+                    reached = flyVia(ap2, 4, "→ ไข่(ตามที่ย้าย)")
+                end
+            end
+            local grabbed = reached and grabEgg(rec, pos)
+            if F.colDbg then
+                local d = hrp() and (flat(hrp().Position) - flat(pos)).Magnitude or -1
+                print(("[col] %s ระยะเริ่ม=%.0f | flyViaถึง=%s ห่างไข่หลังบิน=%.0f | grab=%s | %s/วิ"):format(
+                    tostring(rec.AssetCategory), startDist, tostring(reached), d, tostring(grabbed), compact(rate or 0)))
+            end
+            if grabbed then
                 if flyVia(F.home, 8, "→ บ้าน") then
                     F.status = "เช็คของ + วางไข่..."
                     local n, total = placeAllEggs()
@@ -726,7 +757,7 @@ local function loop()
                     F.status = "ถึงบ้านไม่ได้ ข้าม"; F.skip[rec.Uid] = tick() + 5
                 end
             else
-                F.status = "เก็บไม่ได้ ข้าม"; F.skip[rec.Uid] = tick() + 5
+                F.status = (reached and "เก็บไม่ได้ ข้าม" or "บินไม่ถึงไข่ ข้าม"); F.skip[rec.Uid] = tick() + 5
             end
             task.wait(0.1)
         end
@@ -906,7 +937,7 @@ task.spawn(function()
     end
 end)
 
-print("[farm] 🔖 เวอร์ชัน 2026-09-05i (ลู่วิ่ง: scan เร็ว 1วิ + settle + priority)")
+print("[farm] 🔖 เวอร์ชัน 2026-09-05j (แก้ไข่ย้ายระหว่างบิน + ข้ามไข่ไกลเกิน maxDist)")
 print("[farm] ✅ เริ่มทำงานอัตโนมัติ — ไอคอนกลางจอ = กำลังทำงาน (ไม่มีปุ่มติ๊กแล้ว)")
 print("[farm] ปรับ: getgenv().__farm.speed/.minRate | SETHOME()/SETSAFE() | หยุด: FARM(false)")
 
