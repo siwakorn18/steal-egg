@@ -560,7 +560,7 @@ local function idleTreadmill(reason)
     if not tb then F.status = "ไม่เจอลู่วิ่ง — hover รอ"; task.wait(3); return end
     flyVia(tb.Position + Vector3.new(0, 4, 0), 6, "→ ลู่วิ่ง")
     F.onTreadmill = true
-    restoreHumanoid()
+    removeHumanoid()   -- ★ ห้ามคืน Humanoid! physics ทำตัวดริฟต์ ~0.6 -> AskWearStill พลาด (ถอดไว้ = drift 0 = ขึ้นติด)
     pcall(function() Remotes.Treadmill.AskDoff:InvokeServer() end)  -- รีเซ็ต mount ค้างก่อน (จะได้ขึ้นจุดถูกชัวร์)
     task.wait(0.35)
     -- หาจุดขึ้นที่ AskWearStill ผ่าน — retry 3 รอบ (บางรอบ server sync ช้า จุดที่ควรผ่านเลยพลาด)
@@ -598,7 +598,8 @@ local function idleTreadmill(reason)
     local function speedNow() return ls and ls:FindFirstChild("Speed") and ls.Speed.Value end
     local sp0, t0, lastMount, lastTick = speedNow(), tick(), tick(), 0
     while F.on and F.gen == myGen do
-        -- ยืนจุดเดิมทุกเฟรม (กัน Humanoid ไหล/ตก) — Speed ขึ้นเองจากการ mount ไว้
+        -- ★ กัน Humanoid โผล่ (respawn) มาทำตัวดริฟต์หลุด mount + ยืนจุดเดิมเป๊ะทุกเฟรม
+        removeHumanoid()
         local rr = hrp()
         if rr then rr.CFrame = CFrame.new(spot); rr.AssemblyLinearVelocity = Vector3.zero end
         RunService.Heartbeat:Wait()
