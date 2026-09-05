@@ -12,11 +12,12 @@ local Players     = game:GetService("Players")
 local RS          = game:GetService("ReplicatedStorage")
 local RunService  = game:GetService("RunService")
 local Workspace   = game:GetService("Workspace")
-local lp          = Players.LocalPlayer
 local function safe(fn) local ok, r = pcall(fn); if ok then return r end end
 
--- ★ รอเกมโหลดครบก่อน (กันรันเร็วไปตอนเพิ่งเข้าเกม -> module ยังไม่มา -> require คืน nil)
+-- ★ รอเกมโหลด + LocalPlayer พร้อมก่อน (กันรันเร็วไปตอนเพิ่งเข้าเกม -> lp/module ยังไม่มา -> nil)
 if not game:IsLoaded() then pcall(function() game.Loaded:Wait() end) end
+local lp = Players.LocalPlayer
+while not lp do task.wait(0.2); lp = Players.LocalPlayer end   -- รอจน LocalPlayer โผล่จริง
 pcall(function() if not lp.Character then lp.CharacterAdded:Wait() end end)
 local Remotes, EggState, AssetEarnings, EggRecords
 do
