@@ -529,16 +529,19 @@ local function findTreadmill()
 end
 -- ★ auto-mount (พบ 2026-09-05): ต้อง "ขึ้นลู่" ด้วย AskWearStill ให้ server รับรู้ก่อน แค่ยืนเฉยๆ Speed ไม่ขึ้น
 --   จุดที่ผ่าน = TreadmillBottom + offset (ปลายเบลท์ ~-Z สูง +1) → AskWearStill คืน true → Speed ขึ้นเรื่อยๆ
--- grid offset ครอบทุกทิศ (เบลท์แต่ละพล็อตหันคนละทาง — เดิม fix -Z อย่างเดียวเลยยืนข้างลู่)
+-- grid offset เต็ม ±9 (dx×dz ผสมทุกทิศ) — เบลท์แต่ละพล็อตหันคนละทาง+ไกลถึง ~9 (เช่น offset (-3,1,-9))
 local TREAD_OFFSETS = {}
-for _, dy in ipairs({ 1, 2, 0.5, 3 }) do
-    for _, d in ipairs({ 0, 3, -3, 5, -5, 7, -7 }) do
-        table.insert(TREAD_OFFSETS, Vector3.new(0, dy, d))    -- ตามแกน Z
-        table.insert(TREAD_OFFSETS, Vector3.new(d, dy, 0))    -- ตามแกน X
+do
+    local seen = {}
+    local function add(x, y, z)
+        local k = x .. "," .. y .. "," .. z
+        if not seen[k] then seen[k] = true; table.insert(TREAD_OFFSETS, Vector3.new(x, y, z)) end
     end
-    for _, dz in ipairs({ 4, -4 }) do
-        for _, dx in ipairs({ 4, -4 }) do
-            table.insert(TREAD_OFFSETS, Vector3.new(dx, dy, dz))   -- ทแยง 4 มุม
+    add(0, 1, -5); add(-3, 1, -9); add(0, 1, -9)   -- จุดที่รู้ว่าเวิร์ก (ลองก่อน)
+    local coords = { 0, 3, -3, 6, -6, 9, -9 }
+    for _, dy in ipairs({ 1, 2 }) do
+        for _, dz in ipairs(coords) do
+            for _, dx in ipairs(coords) do add(dx, dy, dz) end
         end
     end
 end
