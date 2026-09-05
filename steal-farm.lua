@@ -529,10 +529,19 @@ local function findTreadmill()
 end
 -- ★ auto-mount (พบ 2026-09-05): ต้อง "ขึ้นลู่" ด้วย AskWearStill ให้ server รับรู้ก่อน แค่ยืนเฉยๆ Speed ไม่ขึ้น
 --   จุดที่ผ่าน = TreadmillBottom + offset (ปลายเบลท์ ~-Z สูง +1) → AskWearStill คืน true → Speed ขึ้นเรื่อยๆ
-local TREAD_OFFSETS = {
-    Vector3.new(0, 1, -5), Vector3.new(0, 1, 5), Vector3.new(0, 1, -3), Vector3.new(0, 1, 3),
-    Vector3.new(0, 1, 0), Vector3.new(3, 1, -5), Vector3.new(-3, 1, -5), Vector3.new(0, 3, -5),
-}
+-- grid offset ครอบทุกทิศ (เบลท์แต่ละพล็อตหันคนละทาง — เดิม fix -Z อย่างเดียวเลยยืนข้างลู่)
+local TREAD_OFFSETS = {}
+for _, dy in ipairs({ 1, 2, 0.5, 3 }) do
+    for _, d in ipairs({ 0, 3, -3, 5, -5, 7, -7 }) do
+        table.insert(TREAD_OFFSETS, Vector3.new(0, dy, d))    -- ตามแกน Z
+        table.insert(TREAD_OFFSETS, Vector3.new(d, dy, 0))    -- ตามแกน X
+    end
+    for _, dz in ipairs({ 4, -4 }) do
+        for _, dx in ipairs({ 4, -4 }) do
+            table.insert(TREAD_OFFSETS, Vector3.new(dx, dy, dz))   -- ทแยง 4 มุม
+        end
+    end
+end
 local function tryMount(spot)
     local r = hrp(); if not r then return false end
     r.CFrame = CFrame.new(spot); r.AssemblyLinearVelocity = Vector3.zero
@@ -551,15 +560,21 @@ local function idleTreadmill(reason)
     restoreHumanoid()
     pcall(function() Remotes.Treadmill.AskDoff:InvokeServer() end)  -- รีเซ็ต mount ค้างก่อน (จะได้ขึ้นจุดถูกชัวร์)
     task.wait(0.2)
-    -- หาจุดขึ้นที่ AskWearStill ผ่าน (ลอง offset ที่เคยได้ก่อน แล้วค่อยไล่ที่เหลือ)
+    -- หาจุดขึ้นที่ AskWearStill ผ่าน
     local base = tb.Position
     local spot
-    local list = {}
-    if F.treadOffset then list[1] = F.treadOffset end
-    for _, o in ipairs(TREAD_OFFSETS) do list[#list + 1] = o end
-    for _, o in ipairs(list) do
-        if not (F.on and F.gen == myGen) then break end
-        if tryMount(base + o) then spot = base + o; F.treadOffset = o; break end
+    -- 1) จุดที่ตั้งเองด้วย SETTREADMILL (ยืนบนเบลท์จริงแล้วเรียก) — ลองก่อนเป็น absolute
+    if F.treadmill and tryMount(F.treadmill) then
+        spot = F.treadmill
+    else
+        -- 2) offset ที่เคยเจอ (cache) แล้วค่อยไล่ grid ทุกทิศ
+        local list = {}
+        if F.treadOffset then list[1] = F.treadOffset end
+        for _, o in ipairs(TREAD_OFFSETS) do list[#list + 1] = o end
+        for _, o in ipairs(list) do
+            if not (F.on and F.gen == myGen) then break end
+            if tryMount(base + o) then spot = base + o; F.treadOffset = o; break end
+        end
     end
     if not spot then
         -- ขึ้นลู่ไม่ได้ = ไม่ค้าง แค่รอเฉยๆ (ยังฟัก/ขาย/อัพผ่าน maintain) แล้ววนกลับไปเช็คไข่
