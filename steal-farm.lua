@@ -568,15 +568,21 @@ local function idleTreadmill(reason)
     local base = tb.Position
     holdAt(base + Vector3.new(0, 4, 0), 6)   -- ★ ค้างหลังบินถึง (กันตกเพราะ gravity ตอน driver หยุดคุม)
     pcall(function() Remotes.Treadmill.AskDoff:InvokeServer() end)  -- รีเซ็ต mount ค้างก่อน (จะได้ขึ้นจุดถูกชัวร์)
-    holdAt(base + Vector3.new(0, 4, 0), 20)  -- ค้างต่อ ~0.35s ให้ doff+ตำแหน่ง sync (ไม่ปล่อยตก)
-    -- หาจุดขึ้นที่ AskWearStill ผ่าน — retry 3 รอบ (บางรอบ server sync ช้า)
+    holdAt(base + Vector3.new(0, 4, 0), 45)  -- ★ settle ~0.75s ให้ server sync ตำแหน่งชัวร์ (ไม่งั้นจุดแรกๆพลาด -> ไล่ทั้ง grid = เด้งนาน)
+    -- หาจุดขึ้น — ลอง "จุดที่เจอบ่อย" (retry) ก่อน มักติดเลย ไม่ต้องไล่ทั้ง grid
     local spot
+    local PRIORITY = {
+        F.treadmill, F.treadOffset and (base + F.treadOffset),
+        base + Vector3.new(-3, 1, -9), base + Vector3.new(0, 1, -5), base + Vector3.new(0, 1, -9),
+        base + Vector3.new(3, 1, -9), base + Vector3.new(-3, 1, -5), base + Vector3.new(0, 1, 5),
+    }
     for attempt = 1, 3 do
         if not (F.on and F.gen == myGen) then break end
-        -- 1) จุดที่ตั้ง/เคยเจอ (ยิงซ้ำ 3 ครั้ง = ทนต่อ sync ช้า) ลองก่อน
-        if F.treadmill and tryMount(F.treadmill, 3) then spot = F.treadmill; break end
-        if F.treadOffset and tryMount(base + F.treadOffset, 3) then spot = base + F.treadOffset; break end
-        -- 2) ไล่ grid ทุกทิศ (ยิงครั้งเดียวต่อจุด)
+        for _, p in ipairs(PRIORITY) do
+            if p and tryMount(p, 2) then spot = p; if p ~= F.treadmill then F.treadOffset = p - base end; break end
+        end
+        if spot then break end
+        -- ไม่เจอใน priority -> ไล่ grid เต็ม (ครั้งเดียวต่อจุด)
         for _, o in ipairs(TREAD_OFFSETS) do
             if not (F.on and F.gen == myGen) then break end
             if tryMount(base + o, 1) then spot = base + o; F.treadOffset = o; break end
@@ -900,7 +906,7 @@ task.spawn(function()
     end
 end)
 
-print("[farm] 🔖 เวอร์ชัน 2026-09-05h (ลู่วิ่ง: ถอด Humanoid + ลงลู่ครบ ปลด Tool/weld)")
+print("[farm] 🔖 เวอร์ชัน 2026-09-05i (ลู่วิ่ง: scan เร็ว 1วิ + settle + priority)")
 print("[farm] ✅ เริ่มทำงานอัตโนมัติ — ไอคอนกลางจอ = กำลังทำงาน (ไม่มีปุ่มติ๊กแล้ว)")
 print("[farm] ปรับ: getgenv().__farm.speed/.minRate | SETHOME()/SETSAFE() | หยุด: FARM(false)")
 
