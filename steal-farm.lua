@@ -423,7 +423,10 @@ local function unplacedUids()
     return uids, list
 end
 local function placeAllEggs()
-    task.wait(1)                       -- หยุด 1 วิ ให้ของเข้ากระเป๋าครบ
+    -- ★ teleport ไปกลางคอกเป๊ะก่อนวาง (PlantEgg ต้องอยู่ใกล้คอก ไม่งั้น "Get closer to your area")
+    local r = hrp()
+    if r and F.home then r.CFrame = CFrame.new(F.home + Vector3.new(0, 5, 0)); r.AssemblyLinearVelocity = Vector3.zero end
+    task.wait(1)                       -- หยุด 1 วิ ให้ของเข้ากระเป๋าครบ + ตำแหน่ง sync
     local uids = unplacedUids()
     local placed, fails, lastReason = 0, 0, nil
     for _, uid in ipairs(uids) do
@@ -919,7 +922,7 @@ task.spawn(function()
     end
 end)
 
-print("[farm] 🔖 เวอร์ชัน 2026-09-05k (ลู่วิ่ง: มี Humanoid + ยืนแตะเบลท์ grounded)")
+print("[farm] 🔖 เวอร์ชัน 2026-09-05L (วางไข่: teleport เข้าคอกก่อนวาง + ลู่ grounded)")
 print("[farm] ✅ เริ่มทำงานอัตโนมัติ — ไอคอนกลางจอ = กำลังทำงาน (ไม่มีปุ่มติ๊กแล้ว)")
 print("[farm] ปรับ: getgenv().__farm.speed/.minRate | SETHOME()/SETSAFE() | หยุด: FARM(false)")
 
