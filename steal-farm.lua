@@ -663,8 +663,9 @@ end
 local function lowGfx()
     if not F.lowGfx or F.gfxDone then return end
     F.gfxDone = true
+    -- ★ ไม่ลบ __ClientTreadmillRenders/Stands (ต้องเห็นลู่วิ่งเพื่อดูว่ายืนจริง) — เหลือแค่ไข่/สัตว์/มอน render
     local KILL_F = { "ClientRenderedAssets", "MonsterParasiteMonsters", "PlacedEggRenders",
-        "AreaEggSlotsClient", "__ClientTreadmillRenders", "Stands" }
+        "AreaEggSlotsClient" }
     local KILL_C = { ParticleEmitter = true, Beam = true, Trail = true, Smoke = true, Fire = true, Sparkles = true, Explosion = true }
     local LIGHT_C = { PointLight = true, SpotLight = true, SurfaceLight = true }
     local PLASTIC = Enum.Material.SmoothPlastic
