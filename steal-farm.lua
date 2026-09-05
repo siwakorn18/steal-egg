@@ -545,15 +545,19 @@ do
         end
     end
 end
-local function tryMount(spot)
-    local r = hrp(); if not r then return false end
-    -- ★ ค้างตำแหน่ง 4 เฟรม + zero vel ให้ server sync ตำแหน่งก่อนยิง (กันบางรอบขึ้นไม่ติดเพราะตำแหน่งยังไม่อัพ)
-    for _ = 1, 4 do r.CFrame = CFrame.new(spot); r.AssemblyLinearVelocity = Vector3.zero; RunService.Heartbeat:Wait() end
-    local ok, r1, r2 = pcall(function() return Remotes.Treadmill.AskWearStill:InvokeServer() end)
-    if not ok then return false end
-    if r1 == true then return true end                          -- ขึ้นสำเร็จ (จุดถูก)
-    if r2 and tostring(r2):find("Already") then return true end -- ขึ้นอยู่แล้ว = ก็คือสำเร็จ (Speed ขึ้นอยู่)
-    return false                                                -- "Not at treadmill" = จุดผิด ลองต่อ
+local function holdAt(spot, frames)
+    local r = hrp(); if not r then return end
+    for _ = 1, frames do r.CFrame = CFrame.new(spot); r.AssemblyLinearVelocity = Vector3.zero; RunService.Heartbeat:Wait() end
+end
+-- ค้างตำแหน่ง(ให้ server sync) + ยิง AskWearStill ซ้ำได้ tries ครั้ง (แต่ละครั้งค้าง 6 เฟรม)
+local function tryMount(spot, tries)
+    if not hrp() then return false end
+    for _ = 1, (tries or 1) do
+        holdAt(spot, 6)
+        local ok, r1, r2 = pcall(function() return Remotes.Treadmill.AskWearStill:InvokeServer() end)
+        if ok and (r1 == true or (r2 and tostring(r2):find("Already"))) then return true end
+    end
+    return false
 end
 local function idleTreadmill(reason)
     local tb = findTreadmill()
@@ -561,25 +565,24 @@ local function idleTreadmill(reason)
     flyVia(tb.Position + Vector3.new(0, 4, 0), 6, "→ ลู่วิ่ง")
     F.onTreadmill = true
     removeHumanoid()   -- ★ ห้ามคืน Humanoid! physics ทำตัวดริฟต์ ~0.6 -> AskWearStill พลาด (ถอดไว้ = drift 0 = ขึ้นติด)
-    pcall(function() Remotes.Treadmill.AskDoff:InvokeServer() end)  -- รีเซ็ต mount ค้างก่อน (จะได้ขึ้นจุดถูกชัวร์)
-    task.wait(0.35)
-    -- หาจุดขึ้นที่ AskWearStill ผ่าน — retry 3 รอบ (บางรอบ server sync ช้า จุดที่ควรผ่านเลยพลาด)
     local base = tb.Position
+    holdAt(base + Vector3.new(0, 4, 0), 6)   -- ★ ค้างหลังบินถึง (กันตกเพราะ gravity ตอน driver หยุดคุม)
+    pcall(function() Remotes.Treadmill.AskDoff:InvokeServer() end)  -- รีเซ็ต mount ค้างก่อน (จะได้ขึ้นจุดถูกชัวร์)
+    holdAt(base + Vector3.new(0, 4, 0), 20)  -- ค้างต่อ ~0.35s ให้ doff+ตำแหน่ง sync (ไม่ปล่อยตก)
+    -- หาจุดขึ้นที่ AskWearStill ผ่าน — retry 3 รอบ (บางรอบ server sync ช้า)
     local spot
     for attempt = 1, 3 do
         if not (F.on and F.gen == myGen) then break end
-        -- 1) จุดที่ตั้งเองด้วย SETTREADMILL (absolute) ลองก่อน
-        if F.treadmill and tryMount(F.treadmill) then spot = F.treadmill; break end
-        -- 2) offset ที่เคยเจอ (cache) แล้วค่อยไล่ grid ทุกทิศ
-        local list = {}
-        if F.treadOffset then list[1] = F.treadOffset end
-        for _, o in ipairs(TREAD_OFFSETS) do list[#list + 1] = o end
-        for _, o in ipairs(list) do
+        -- 1) จุดที่ตั้ง/เคยเจอ (ยิงซ้ำ 3 ครั้ง = ทนต่อ sync ช้า) ลองก่อน
+        if F.treadmill and tryMount(F.treadmill, 3) then spot = F.treadmill; break end
+        if F.treadOffset and tryMount(base + F.treadOffset, 3) then spot = base + F.treadOffset; break end
+        -- 2) ไล่ grid ทุกทิศ (ยิงครั้งเดียวต่อจุด)
+        for _, o in ipairs(TREAD_OFFSETS) do
             if not (F.on and F.gen == myGen) then break end
-            if tryMount(base + o) then spot = base + o; F.treadOffset = o; break end
+            if tryMount(base + o, 1) then spot = base + o; F.treadOffset = o; break end
         end
         if spot then break end
-        task.wait(0.6)   -- รอ server sync แล้วลองใหม่ทั้งชุด
+        holdAt(base + Vector3.new(0, 4, 0), 30)   -- รอก่อนลองรอบใหม่ (ค้างไม่ปล่อยตก)
     end
     if not spot then
         -- ขึ้นลู่ไม่ได้ = ไม่ค้าง แค่รอเฉยๆ (ยังฟัก/ขาย/อัพผ่าน maintain) แล้ววนกลับไปเช็คไข่
@@ -876,6 +879,7 @@ task.spawn(function()
     end
 end)
 
+print("[farm] 🔖 เวอร์ชัน 2026-09-05g (ลู่วิ่ง: ถอด Humanoid + ค้าง+ยิงซ้ำ)")
 print("[farm] ✅ เริ่มทำงานอัตโนมัติ — ไอคอนกลางจอ = กำลังทำงาน (ไม่มีปุ่มติ๊กแล้ว)")
 print("[farm] ปรับ: getgenv().__farm.speed/.minRate | SETHOME()/SETSAFE() | หยุด: FARM(false)")
 
