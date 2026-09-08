@@ -164,8 +164,12 @@ local function computeAreaRequirements()
         end
     end
 end
+F.zoneFail = F.zoneFail or {}   -- นับ fail ติดกันต่อโซน
+local function markZoneFail(z) F.zoneFail[z] = (F.zoneFail[z] or 0) + 1; if F.zoneFail[z] == (F.zoneFailMax or 3) then print("[f2] 🚫 ตัดโซน " .. tostring(z) .. " (ยามจับ/ไข่หาย " .. F.zoneFail[z] .. " ครั้งติด — ยามเร็วเกินหนีไม่พ้น)") end end
+local function markZoneOK(z) F.zoneFail[z] = 0 end   -- สำเร็จ = รีเซ็ตตัวนับ
 local function areaAllowed(areaId)
-    local req = F.areaReq[areaId]; if not req then return true end   -- ไม่รู้ = ยอมให้ลอง
+    if (F.zoneFail[areaId] or 0) >= (F.zoneFailMax or 3) then return false end   -- โซนที่หนียามไม่พ้นซ้ำ = ตัด
+    local req = F.areaReq[areaId]; if not req then return true end
     return speedStat() >= req * (F.speedMargin or 1)
 end
 
@@ -403,10 +407,10 @@ local function loop()
                     end
                     F.target = nil
                     if cancelled then
-                        F.status = "❌ ยามยกเลิกการถือ (Speed ไม่ถึงโซนนี้?)"; print("[f2] " .. F.status .. " " .. tostring(rec.AreaId)); F.skip[rec.Uid] = tick() + 30
+                        F.status = "❌ ยามยกเลิก (หนีไม่พ้น)"; print("[f2] " .. F.status .. " " .. tostring(rec.AreaId)); F.skip[rec.Uid] = tick() + 30; markZoneFail(rec.AreaId)
                     else
                         local n, total = placeAllEggs(); F.status = ("✅ วาง %d/%d [%s]"):format(n, total, tostring(rec.AreaId))
-                        if total == 0 then F.zoneFail = F.zoneFail or {}; F.zoneFail[rec.AreaId] = (F.zoneFail[rec.AreaId] or 0) + 1; print("[f2] ⚠ ไข่หายก่อนวาง (ยกเลิกเงียบ) โซน " .. tostring(rec.AreaId) .. " Speed=" .. compact(speedStat()) .. " req=" .. tostring(F.areaReq[rec.AreaId])) end
+                        if total == 0 then markZoneFail(rec.AreaId); print("[f2] ⚠ ไข่หายก่อนวาง โซน " .. tostring(rec.AreaId)) elseif n > 0 then markZoneOK(rec.AreaId) end
                         if total > 0 and n == 0 then F.penFull = true end
                     end
                 else
@@ -473,5 +477,5 @@ do
         while gui.Parent do t = t + 0.05; icon.ImageTransparency = 0.08 + 0.12 * (math.sin(t * 3) * 0.5 + 0.5); holder.Visible = (F.on == true); stx.Text = tostring(F.status); task.wait(0.05) end
     end)
 end
-print("[f2] 🔖 steal-farm2 v2026-09-08c — ระบบยาม: กรองโซนตามป้าย RequiredSpeed (เทสผ่าน วางไข่ต่อเนื่อง)")
+print("[f2] 🔖 steal-farm2 v2026-09-08d — auto-ตัดโซนที่ยามเร็วเกินหนีไม่พ้น (เก็บโซนที่วางได้จริง)")
 task.spawn(function() pcall(function() getgenv().FARM(true) end) end)
