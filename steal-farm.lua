@@ -405,7 +405,8 @@ local function loop()
                     if cancelled then
                         F.status = "❌ ยามยกเลิกการถือ (Speed ไม่ถึงโซนนี้?)"; print("[f2] " .. F.status .. " " .. tostring(rec.AreaId)); F.skip[rec.Uid] = tick() + 30
                     else
-                        local n, total = placeAllEggs(); F.status = ("✅ วาง %d/%d"):format(n, total)
+                        local n, total = placeAllEggs(); F.status = ("✅ วาง %d/%d [%s]"):format(n, total, tostring(rec.AreaId))
+                        if total == 0 then F.zoneFail = F.zoneFail or {}; F.zoneFail[rec.AreaId] = (F.zoneFail[rec.AreaId] or 0) + 1; print("[f2] ⚠ ไข่หายก่อนวาง (ยกเลิกเงียบ) โซน " .. tostring(rec.AreaId) .. " Speed=" .. compact(speedStat()) .. " req=" .. tostring(F.areaReq[rec.AreaId])) end
                         if total > 0 and n == 0 then F.penFull = true end
                     end
                 else
@@ -416,6 +417,24 @@ local function loop()
         end
     end
     F.status = "หยุดแล้ว"
+end
+
+--=========================== ดักข้อความ "Delivery failed" (วินิจฉัย) ===========================
+if not F.dlvHook then F.dlvHook = true
+    task.spawn(function()
+        local pg = lp:FindFirstChildOfClass("PlayerGui"); if not pg then return end
+        local function watch(lbl)
+            if not (lbl:IsA("TextLabel") or lbl:IsA("TextButton")) then return end
+            lbl:GetPropertyChangedSignal("Text"):Connect(function()
+                local t = lbl.Text
+                if type(t) == "string" and (t:find("Delivery") or t:find("returned to")) then
+                    print("[f2] 📩 GUI: " .. t .. " | ตอนนั้นสถานะ=" .. tostring(F.status))
+                end
+            end)
+        end
+        for _, d in ipairs(pg:GetDescendants()) do watch(d) end
+        pg.DescendantAdded:Connect(watch)
+    end)
 end
 
 --=========================== control ===========================
@@ -454,5 +473,5 @@ do
         while gui.Parent do t = t + 0.05; icon.ImageTransparency = 0.08 + 0.12 * (math.sin(t * 3) * 0.5 + 0.5); holder.Visible = (F.on == true); stx.Text = tostring(F.status); task.wait(0.05) end
     end)
 end
-print("[f2] 🔖 steal-farm2 v2026-09-08b — ระบบยาม: กรองโซนตามป้าย RequiredSpeed (เทสผ่าน วางไข่ต่อเนื่อง)")
+print("[f2] 🔖 steal-farm2 v2026-09-08c — ระบบยาม: กรองโซนตามป้าย RequiredSpeed (เทสผ่าน วางไข่ต่อเนื่อง)")
 task.spawn(function() pcall(function() getgenv().FARM(true) end) end)
