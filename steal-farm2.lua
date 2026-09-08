@@ -121,6 +121,19 @@ local function goTo(pos, radius, speed)
     F.target = nil; return F.arrived
 end
 local function flyVia(dest, radius, label, speed) F.status = label or "→"; goTo(F.safe, 10, speed); return goTo(dest, radius, speed) end
+-- ★ บินตอน "ถือไข่" แบบ BigFoot: คง Humanoid (WalkSpeed สูงจาก Speed stat) ให้ server ทำนายว่าหนียามพ้น
+local function flyCarry(dest, speed, maxT)
+    F.manual = true                       -- กัน driver ถอด Humanoid
+    local h = restoreHumanoid()           -- ต้องมี Humanoid (WalkSpeed สูง)
+    local r = hrp(); if not r then F.manual = false; return false end
+    local t = tick()
+    while alive() and (r.Position - dest).Magnitude > 5 and tick() - t < (maxT or 25) do
+        if F.carrying == false then break end   -- โดนยกเลิก = หยุด
+        r.CFrame = CFrame.new(r.Position + (dest - r.Position).Unit * math.min((speed or 700) * RunService.Heartbeat:Wait(), (dest - r.Position).Magnitude))
+    end
+    F.manual = false
+    return (r.Position - dest).Magnitude <= 8
+end
 
 --=========================== เดินจริง (Humanoid) — เข้าโซน gate ===========================
 local function walkTo(dest, maxT)
